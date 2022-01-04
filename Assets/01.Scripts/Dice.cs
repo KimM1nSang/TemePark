@@ -45,7 +45,7 @@ public class Dice : MonoBehaviour
     public void Select()
     {
         if (isSelecting||!isRolling) return;
-
+        TurnSystem.Instance.state = TurnState.SELECTED;
         isSelecting = true;
         isRolling = false;
 

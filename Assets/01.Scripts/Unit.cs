@@ -22,8 +22,6 @@ public class Unit : MonoBehaviour
 
     public float moveDuration = 2;
 
-    public int dir = 0;
-
     private void Start()
     {
         GameObject diceGO = Instantiate(diceObj, DiceTrm);

@@ -5,10 +5,14 @@ using System;
 using DG.Tweening;
 
 public enum TurnState {
+    BEFORESTART,
+    WATCH,
     START,
     PLAYERTURN,
     ENEMYTURN,
     DIRCHOISE,
+    BETWEEN,
+    SELECTED,
     WON,
     LOST }
 public class TurnSystem : MonoBehaviour
@@ -26,12 +30,14 @@ public class TurnSystem : MonoBehaviour
     public Unit playerUnit { get; set; }
     public Unit enemyUnit { get; set; }
 
-
-    void Start()
+    public bool isCor { get; set; } = true;
+    public int unitDir { get; set; }
+    void Awake()
     {
         Instance = this;
-        state = TurnState.START;
-        StartCoroutine( SetupTurn());
+        state = TurnState.BEFORESTART;
+        UIManager.Instance.StartButton.onClick.AddListener(() => { UIManager.Instance.RemoveButton(); StartCoroutine(SetupTurn()); });
+        UIManager.Instance.WatchButton.onClick.AddListener(() => { UIManager.Instance.RemoveButton(); state = TurnState.WATCH; });
     }
 
     private void Update()
@@ -41,6 +47,8 @@ public class TurnSystem : MonoBehaviour
             DiceInteract();
         }
     }
+
+
     private IEnumerator SetupTurn()
     {
         GameObject playerGO = Instantiate(playerPrefab, startTile.unitsPosTrms[0]);
@@ -53,15 +61,16 @@ public class TurnSystem : MonoBehaviour
         enemyUnit.currentTile = startTile;
         enemyUnit.state = UnitState.ENEMY;
 
-        yield return new WaitForSeconds(2f);
+        state = TurnState.START;
+
+        float delay = 2f;
+
+        UIManager.Instance.TurnText("PlayerTurn", delay);
+        yield return new WaitForSeconds(delay);
 
         state = TurnState.PLAYERTURN;
-        PlayerTurn();
     }
-    private void PlayerTurn()
-    {
 
-    }
 
     public void DiceInteract()
     {
@@ -86,8 +95,7 @@ public class TurnSystem : MonoBehaviour
     public void Moving(Unit unit, TileNode node,int index, int dir = 0)
     {
         int leng = node.nextTileNodes.Length;
-        print(leng);
-        print(node.name);
+        //print(leng);
         if (leng > 0  && leng <= 1 && index > 0)
         {
             index--;
@@ -96,19 +104,19 @@ public class TurnSystem : MonoBehaviour
             dir = 0;
             node = node.nextTileNodes[dir];
             unit.nodeWay.Enqueue(node);
-            print(unit.nodeWay.Count);
+            //print(unit.nodeWay.Count);
             Moving(unit, node, index, dir);
         }
         else
         {
             print("무빙");
-            print(unit.nodeWay.Count);
+            //print(unit.nodeWay.Count);
            MoveTile(unit, index);
         }
     }
     public void MoveTile(Unit unit,int index)
     {
-        print(unit.nodeWay.Count);
+        //print(unit.nodeWay.Count);
         if (unit.nodeWay.Count <= 0)
         {
             print("유닛 노드 저장소 비었음");
@@ -118,63 +126,82 @@ public class TurnSystem : MonoBehaviour
             }
             else
             {
-                EndOfTurn(unit);
+                StartCoroutine(EndOfTurn(unit));
             }
         }
         else
         {
-            unit.transform.DOMove(unit.nodeWay.Peek().TileCenterTrm.position, unit.moveDuration).OnComplete(() => {
-                unit.currentTile = unit.nodeWay.Dequeue(); MoveTile(unit,index);
-            });
+            print("length" + unit.nodeWay.Peek().currentUnits.Count);
+            TileNode nodePeek = unit.nodeWay.Peek();
+            int count = nodePeek.currentUnits.Count;
+            if (count>= 1)
+            {
+                nodePeek.currentUnits[0].transform.DOMove(unit.nodeWay.Peek().unitsPosTrms[0].position, nodePeek.currentUnits[0].moveDuration*5).SetSpeedBased();
+                unit.transform.DOMove(unit.nodeWay.Peek().unitsPosTrms[count].position, unit.moveDuration).SetSpeedBased().OnComplete(() => {
+                    unit.currentTile.currentUnits.Remove(unit);
+                    unit.currentTile = unit.nodeWay.Dequeue();
+                    unit.currentTile.currentUnits.Add(unit);
+                    MoveTile(unit, index);
+                });
+            }
+            else
+            {
+                unit.transform.DOMove(unit.nodeWay.Peek().TileCenterTrm.position, unit.moveDuration).SetSpeedBased().OnComplete(() => {
+                    unit.currentTile.currentUnits.Remove(unit);
+                    unit.currentTile = unit.nodeWay.Dequeue();
+                    unit.currentTile.currentUnits.Add(unit);
+                    MoveTile(unit, index);
+                });
+            }
+
+           
         }
 
     }
 
     private IEnumerator ChoiseDir(Unit unit,int index)
     {
-        bool isCor = true;
         print("A = 0, S = 1");
         //print(index);
         while (isCor)
         {
             yield return new WaitForEndOfFrame();
-            if(state == TurnState.PLAYERTURN)
+            if(unit.state == UnitState.PLAYER)
             {
-                if (Input.GetKey(KeyCode.A))
-                {
-                    print("A = 0");
-                    isCor = false;
-                    unit.dir = 0;
-                }
-                else if (Input.GetKey(KeyCode.S))
-                {
-                    print("S = 1");
-                    isCor = false;
-                    unit.dir = 1;
-                }
+                
             }
-            else if (state == TurnState.ENEMYTURN)
+            if (unit.state == UnitState.ENEMY)
             {
                 yield return new WaitForSeconds(1f);
                 isCor = false;
-                unit.dir = UnityEngine.Random.Range(0, 1);
+                unitDir = UnityEngine.Random.Range(0, 1);
             }
 
         }
+
+        print(unitDir);
+        isCor = true;
         index--;
-        unit.nodeWay.Enqueue(unit.currentTile.nextTileNodes[unit.dir]);
-        Moving(unit, unit.currentTile.nextTileNodes[unit.dir], index, unit.dir);
+        unit.nodeWay.Enqueue(unit.currentTile.nextTileNodes[unitDir]);
+        Moving(unit, unit.currentTile.nextTileNodes[unitDir], index, unitDir);
     }
 
-    public void EndOfTurn(Unit unit)
+    public IEnumerator EndOfTurn(Unit unit)
     {
+        float delay = 2f;
         switch (unit.state)
         {
             case UnitState.PLAYER:
+                state = TurnState.BETWEEN;
+                UIManager.Instance.TurnText("EnemyTurn", delay);
+                yield return new WaitForSeconds(delay);
                 state = TurnState.ENEMYTURN;
                 StartCoroutine(EnemyTurn());
                 break;
             case UnitState.ENEMY:
+                state = TurnState.BETWEEN;
+                UIManager.Instance.TurnText("PlayerTurn", delay);
+                yield return new WaitForSeconds(delay);
                 state = TurnState.PLAYERTURN;
                 break;
             default:
@@ -183,6 +210,7 @@ public class TurnSystem : MonoBehaviour
     }
     private IEnumerator EnemyTurn()
     {
+        yield return new WaitForSeconds(1.5f);
         enemyUnit.dice.Roll();
         yield return new WaitForSeconds(1.5f);
         enemyUnit.dice.Select();
